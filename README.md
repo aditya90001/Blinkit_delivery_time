@@ -1,187 +1,232 @@
-# Blinkit Delivery-Time Prediction
+# Blinkit Delivery Time Prediction
 
-An end-to-end regression project based on the supplied Blinkit EDA: data
-exploration, cleaning, chronological model evaluation, and a FastAPI service
-containerized for Render.
+An end-to-end machine-learning project that estimates grocery delivery time
+from checkout-time order details. It includes exploratory data analysis,
+feature engineering, regression model comparison, a FastAPI service, and an
+HTML prediction form.
 
-Project explanation, interview preparation, and deployment instructions are in
-[`project_guide/`](./project_guide/README.md).
+> **Model status:** The saved evaluation scores below are from the earlier
+> model comparison. The later hyperparameter-tuning run was stopped before it
+> produced new verified metrics. Do not treat the old scores as tuned results.
 
-## Dataset
+## Contents
 
-The supplied EDA reports 52,750 rows, 18 source columns, 52,500 distinct order
-IDs, eight cities, and 180 order dates. It identifies text-formatted quantity
-values, duplicate order IDs, inconsistent fruit-category labels, extreme
-`unit_price` and `order_value` values, missing values, and invalid ratings.
-The EDA also establishes that cancelled and partially fulfilled rows carry
-placeholder delivery times; only delivered rows are used to train the
-regression target.
+- [Project overview](#project-overview)
+- [Dataset and target](#dataset-and-target)
+- [Features and data preparation](#features-and-data-preparation)
+- [Model evaluation](#model-evaluation)
+- [Quick start](#quick-start)
+- [API](#api)
+- [EDA notebook](#eda-notebook)
+- [Tests](#tests)
+- [Deploy to Render](#deploy-to-render)
+- [Project structure](#project-structure)
+- [Learning resources](#learning-resources)
 
-The provided dataset is `data/compressed_data (2).csv`. Its observed values
-match the supplied EDA: 52,750 rows, 18 columns, 250 repeated order IDs,
-44,611 delivered rows before deduplication, eight cities, and 180 dates.
-Deduplication leaves 44,402 delivered training rows. Actual model metrics are
-computed against a chronological holdout rather than being assumed in advance.
-The delivered-order median is 13.9 minutes, and 94.99% of eligible deliveries
-exceed the dataset's constant 10-minute promise.
+## Project overview
 
-## Features and target
+The API estimates `actual_delivery_mins` using information expected to be
+available when an order is placed. The trained scikit-learn preprocessing
+pipeline and model are saved together, then loaded by FastAPI at startup.
+The browser interface is served by the same API.
 
-The API predicts `actual_delivery_mins` in minutes for an order at checkout.
-The common training/API pipeline uses:
+## Dataset and target
 
-- `city`, `dark_store_id`, `category`, `payment_mode`
-- `order_hour`, cyclical hour/weekday/month encodings, weekday/month/day of
-  year, weekend, missing-value indicators, `quantity`, `unit_price`,
-  `order_value`, and `distance_km`
+The supplied CSV contains 52,750 rows and 18 columns. After removing duplicate
+order IDs and retaining valid delivered orders, the training dataset contains
+44,402 records. Cancelled and partially fulfilled orders are excluded because
+their delivery-time values may be placeholders.
 
-The implementation intentionally excludes `order_id`, `customer_id`,
-`delivery_partner_id`, `order_status`, `customer_rating`, and
-`promised_delivery_mins`: identifiers are not robust predictors; status,
-assigned rider, and rating are unavailable or outcome-derived at checkout;
-and the supplied EDA reports that the promise is constant at 10 minutes.
-`stockout_flag` is not used: inspection confirms every delivered training
-order has a zero stockout flag, so the model cannot learn an effect from it.
-It remains useful in the EDA for understanding cancellation and fulfillment.
+The target is **actual delivery time in minutes**. This is a regression task,
+so its performance is measured with MAE, RMSE, and R²—not classification
+accuracy.
 
-Data preparation normalizes category labels and quantity strings, treats
-prices above Rs. 1,500 and documented flat Rs. 25,000 order values as invalid,
-derives missing quantity from plausible value/price pairs, and uses learned
-training-only imputers/encoders. The notebook follows the supplied EDA's
-cleaning and visualization sequence while retaining train-only imputation for
-model evaluation. Duplicate-ID behavior follows the provided EDA
-(`keep="first"`). Model comparisons use delivered records and a chronological
-80/20 holdout when valid dates are available.
+## Features and data preparation
 
-### Actual training results
+Checkout-time model inputs include:
 
-Evaluation uses dates through 2025-05-23 for training and the subsequent
-orders from 2025-05-24 for the holdout. MAE is the selection metric; the
-selected pipeline is refitted on all 44,402 eligible delivered orders.
-For reference, always predicting the training median (13.9 minutes) scores
-2.335-minute MAE and 3.774-minute RMSE on that same holdout.
+- City, dark store, product category, and payment method
+- Order hour and date-derived calendar features
+- Quantity, unit price, order value, and delivery distance
+- Missing-value indicators and cyclical time encodings
 
-| Model | Holdout MAE (min) | RMSE (min) | R² |
+The shared feature pipeline parses quantity text, normalizes category labels,
+handles invalid values, and prepares missing values. Training-only imputers
+and encoders are fitted inside the model pipeline.
+
+Order/customer identifiers, delivery partner assignment, order status,
+customer rating, promised delivery time, and stockout status are excluded
+because they can be identifiers, outcome-derived, unavailable at checkout, or
+non-informative for delivered orders.
+
+## Model evaluation
+
+The previous saved report evaluates a chronological holdout beginning
+2025-05-24. It contains 9,081 holdout orders.
+
+| Model | MAE (minutes) | RMSE (minutes) | R² |
 |---|---:|---:|---:|
-| Linear Regression (selected) | 1.876 | 3.329 | 0.212 |
-| Random Forest | 2.260 | 3.552 | 0.103 |
-| Decision Tree | 2.348 | 3.901 | -0.082 |
+| Linear regression | 1.876 | 3.329 | 0.212 |
+| Random forest | 2.260 | 3.552 | 0.103 |
+| Decision tree | 2.348 | 3.901 | -0.082 |
 | XGBoost | 2.350 | 3.958 | -0.114 |
 
-On this chronological holdout, linear regression generalizes best among the
-four requested models. The selected model improves holdout MAE by about 20% against the median
-baseline. The modest R² and RMSE substantially above MAE point
-to unusually long delivery times that none of these models predicts well.
-Treat outputs as estimates, not an SLA guarantee.
+**Interpretation:** Linear regression had the lowest MAE in this saved run.
+The R² of 0.212 means it explains about 21.2% of the target variance on this
+holdout; it is not “21.2% prediction accuracy.” The errors are in minutes,
+and predictions are estimates—not guaranteed ETAs.
 
-## Run locally
+Metrics are also saved in `reports/model_comparison.csv` and
+`reports/model_metadata.json`. Reports and the raw dataset are excluded from
+Git by default.
 
-Use Python 3.11 or later. In PowerShell, from the project folder:
+## Quick start
+
+### Requirements
+
+- Python 3.11 or later
+- The provided dataset at `data/compressed_data (2).csv` for training
+
+### Install dependencies
+
+Run these commands in PowerShell from the project root:
 
 ```powershell
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Train all four regressors on the provided CSV:
+If you do not already have a virtual environment, create one first:
+
+```powershell
+py -3.11 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+### Train models
 
 ```powershell
 .\venv\Scripts\python.exe train.py
 ```
 
-Alternatively:
+To train from another CSV:
 
 ```powershell
 .\venv\Scripts\python.exe train.py --data "C:\path\to\compressed_data.csv"
 ```
 
-The training command tunes regularized linear regression, Decision Tree,
-Random Forest, and XGBoost against a chronological validation slice within the
-training dates. Candidate models use a deterministic sample of up to 12,000
-rows from that earlier fit period; the full chronological validation window
-is used for selection, and the later-date holdout is kept out of
-hyperparameter selection.
-It reports holdout MAE (minutes), RMSE, R², validation MAE, and selected
-parameters. The lowest-holdout-MAE pipeline is refitted on all valid delivered
-records, and the run writes:
+Training compares Linear/Ridge Regression, Decision Tree, Random Forest,
+and XGBoost using time-ordered data. The tuning configuration can be adjusted
+with `--tuning-trials`. A run writes:
 
 - `models/delivery_time_model.joblib`
 - `reports/model_comparison.csv`
 - `reports/model_metadata.json`
 
-Choose the number of randomized hyperparameter settings per model with
-`.\venv\Scripts\python.exe train.py --tuning-trials 5`. The default is 2,
-plus each model's default settings are evaluated during tuning. Tuning is not
-guaranteed to improve future-date performance.
+The current saved metrics above are from the previous run; rerun training to
+produce fresh metrics after any model or tuning changes.
 
-Start the API after training:
+### Start the web app
 
 ```powershell
 .\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
-Open `http://127.0.0.1:8001/` for the prediction UI, `http://127.0.0.1:8001/docs`
-for interactive API docs, and `http://127.0.0.1:8001/health` to check model
-availability.
-`POST /predict` accepts an order date (optional), hour (optional), city,
-dark-store ID (optional), category, quantity, unit price, order value,
-distance, and payment mode (optional). Missing optional features are imputed
-by the fitted pipeline. The response field is `predicted_delivery_mins`.
-The responsive HTML prediction form is served
-directly by the same API backend. The browser form submits to `/predict` and
-reads model availability from `/health`. The frontend lives in
-`templates/index.html`.
+Open:
 
-Run the project tests:
+- Frontend: <http://127.0.0.1:8001/>
+- API health: <http://127.0.0.1:8001/health>
+- Interactive API docs: <http://127.0.0.1:8001/docs>
+
+## API
+
+`POST /predict` accepts JSON order details and returns the predicted duration
+in minutes.
+
+Example request:
+
+```json
+{
+  "city": "Delhi",
+  "category": "Snacks",
+  "order_hour": 18,
+  "quantity": 2,
+  "unit_price": 40,
+  "order_value": 80,
+  "distance_km": 2.4,
+  "payment_mode": "UPI"
+}
+```
+
+Example response:
+
+```json
+{
+  "predicted_delivery_mins": 16.25,
+  "model": "linear_regression",
+  "unit": "minutes"
+}
+```
+
+Optional fields can be omitted; the fitted preprocessing pipeline handles
+missing optional values. Required fields and validation are documented at
+`/docs`.
+
+## EDA notebook
+
+Open [`notebooks/blinkit_delivery_time_eda.ipynb`](./notebooks/blinkit_delivery_time_eda.ipynb)
+in VS Code or Jupyter. The notebook follows the supplied EDA's organization
+and covers data quality, cleaning, delivery-time distributions, city/time
+patterns, correlations, and model evaluation. Keep the CSV under `data/` to
+run it from the project.
+
+## Tests
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install pytest httpx
 .\venv\Scripts\python.exe -m pytest
 node --test tests/test_frontend_script.js
 ```
 
-## EDA notebook
+## Deploy to Render
 
-Open `notebooks/blinkit_delivery_time_eda.ipynb` in VS Code or Jupyter. Run
-from the project folder after placing the CSV under `data/`. The notebook
-reviews data shape/types, duplicate IDs, missingness, target eligibility,
-cleaning, target distribution, city/hour patterns, feature relationships,
-and the same four-model temporal comparison. It shares the project's
-preprocessing and training modules.
+The project includes a Dockerfile and `render.yaml`. The image contains the
+API, HTML template, runtime dependencies, and trained model artifact; it does
+not need the raw CSV or run model training during deployment.
 
-## Docker and Render
+1. Push the project to a GitHub repository, including
+   `models/delivery_time_model.joblib`.
+2. Keep the raw dataset, secrets, virtual environments, and generated reports
+   out of Git; these are covered by `.gitignore`.
+3. In Render, create a Blueprint or Docker Web Service connected to the repo.
+4. Confirm `/health` is the health-check path and deploy.
+5. Open the Render service URL; the frontend is at `/`, and the API docs are
+   at `/docs`.
 
-The Docker image loads the already trained
-`models/delivery_time_model.joblib` artifact. Deployment does not retrain all
-four models or require the raw CSV in the image. Retrain locally with the CSV
-when you need to update the model, and include the refreshed artifact in the
-Render build context. Do not publish sensitive data or credentials in a
-public repository or image.
+See the [Render deployment guide](./project_guide/RENDER_DEPLOYMENT.md) for
+detailed steps and troubleshooting.
 
-Build and run locally, from a folder containing the CSV:
-
-```powershell
-docker build -t blinkit-delivery-api .
-docker run --rm -p 8000:8000 blinkit-delivery-api
-```
-
-Deploy the Docker service with `render.yaml`. Render routes the service
-through the automatically supplied `PORT`; `/health` is configured as its
-health check.
-
-## Project layout
+## Project structure
 
 ```text
 app/
-  features.py     Shared cleaning, feature schema, training-row selection
-  training.py     Temporal split, four-model comparison, artifact writing
-  main.py         FastAPI validation, health, and prediction endpoints
-data/             compressed_data (2).csv (provided training dataset)
-templates/        Responsive HTML prediction frontend
-notebooks/        EDA and model comparison notebook
-tests/            Feature-cleaning and API tests
-train.py          CLI training entry point
-Dockerfile        Load the trained model and serve the API
-render.yaml       Render Docker service configuration
+  features.py       Shared cleaning and feature engineering
+  training.py       Model comparison, tuning, evaluation, artifact saving
+  main.py           FastAPI routes and model loading
+data/               Local source dataset (ignored by Git)
+models/             Trained model artifact required by the API
+notebooks/          EDA and modeling notebook
+project_guide/      Project overview, interview prep, Render instructions
+reports/            Generated model metrics (ignored by Git)
+templates/          HTML prediction interface
+tests/              API, feature, training, and frontend tests
+train.py            Model-training command
+Dockerfile          Container build and server startup
+render.yaml         Render service configuration
+requirements.txt    Training and development dependencies
+requirements-api.txt API runtime dependencies
 ```
-#   B l i n k i t _ d e l i v e r y _ t i m e  
- 
+
+## Learning resources
+
+- [Project and file overview](./project_guide/README.md)
+- [Interview questions and answers](./project_guide/INTERVIEW_QUESTIONS.md)
+- [Render deployment guide](./project_guide/RENDER_DEPLOYMENT.md)
