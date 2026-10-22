@@ -1,0 +1,5 @@
+services:
+  - type: web
+    name: blinkit-delivery-time-api
+    runtime: docker
+    healthCheckPath: /health

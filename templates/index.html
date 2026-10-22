@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8f4">
+  <meta name="description" content="Estimate a Blinkit order's delivery time with a machine-learning model trained on real order data.">
+  <title>Delivery time estimator | Blinkit</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --green: #187e48;
+      --green-dark: #10633a;
+      --green-light: #e6f4eb;
+      --ink: #1b2820;
+      --muted: #748078;
+      --line: #e6ebe6;
+      --surface: #fff;
+      --canvas: #f7f8f5;
+      --red: #b83b3b;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse at 2% 12%, rgba(160, 211, 137, .19), transparent 28rem),
+        radial-gradient(ellipse at 100% 84%, rgba(247, 206, 99, .14), transparent 26rem),
+        var(--canvas);
+    }
+    button, input, select { font: inherit; }
+    .topbar {
+      height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(20px, 6vw, 88px);
+      border-bottom: 1px solid rgba(227, 232, 226, .85);
+      background: rgba(255, 255, 255, .78);
+      backdrop-filter: blur(12px);
+    }
+    .brand { display: inline-flex; align-items: center; gap: 11px; color: var(--ink); text-decoration: none; font-size: 16px; font-weight: 760; letter-spacing: -.045em; }
+    .brand-mark { width: 35px; height: 35px; display: grid; place-items: center; border-radius: 11px; color: white; background: #218b4d; }
+    .brand-mark svg { width: 22px; height: 22px; }
+    .topbar-right { display: flex; align-items: center; gap: 20px; }
+    .topbar-note { color: var(--muted); font-size: 12px; }
+    .api-link { color: var(--green); font-size: 12px; font-weight: 700; text-decoration: none; }
+    .page { width: min(1100px, calc(100% - 40px)); margin: 0 auto; padding: 53px 0 64px; }
+    .intro { margin: 0 0 28px 3px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--green); font-size: 11px; font-weight: 760; letter-spacing: .12em; text-transform: uppercase; }
+    .eyebrow-dot { width: 7px; height: 7px; border-radius: 50%; background: #38a765; box-shadow: 0 0 0 4px rgba(56, 167, 101, .12); }
+    h1 { margin: 12px 0 8px; font-size: clamp(30px, 4vw, 43px); font-weight: 760; letter-spacing: -.065em; line-height: 1.1; }
+    .intro-copy { max-width: 580px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(275px, .78fr); align-items: start; gap: 19px; }
+    .card { overflow: hidden; border: 1px solid rgba(227, 232, 226, .95); border-radius: 16px; background: var(--surface); box-shadow: 0 14px 48px rgba(39, 61, 44, .055); }
+    .form-card { padding: 24px; }
+    .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
+    h2 { margin: 0; font-size: 15px; font-weight: 720; letter-spacing: -.025em; }
+    .card-subtitle { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .required-note { padding-top: 3px; color: var(--muted); font-size: 11px; }
+    .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px 15px; }
+    .field { min-width: 0; }
+    .field.full { grid-column: 1 / -1; }
+    label { display: flex; align-items: center; gap: 5px; margin-bottom: 7px; color: #445048; font-size: 11px; font-weight: 680; }
+    .required { color: var(--green); }
+    .optional { color: #9aa49c; font-size: 10px; font-weight: 450; }
+    .control-wrap { position: relative; }
+    .control-icon { position: absolute; z-index: 1; top: 50%; left: 12px; display: grid; place-items: center; width: 16px; height: 16px; color: #89958d; pointer-events: none; transform: translateY(-50%); }
+    .control-icon svg { width: 16px; height: 16px; }
+    input, select {
+      width: 100%; height: 42px; padding: 0 12px;
+      border: 1px solid var(--line); border-radius: 8px; outline: none;
+      color: var(--ink); background: white; font-size: 12px; transition: border-color .18s, box-shadow .18s;
+    }
+    .with-icon { padding-left: 37px; }
+    input::placeholder { color: #a6afa8; }
+    input:focus, select:focus { border-color: #55ae75; box-shadow: 0 0 0 3px rgba(56, 154, 91, .1); }
+    select:invalid { color: #8e9990; }
+    .hint { margin: 6px 0 0; color: #9aa49c; font-size: 10px; line-height: 1.45; }
+    .form-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #edf0ed; }
+    .form-note { max-width: 240px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .actions { display: flex; align-items: center; gap: 9px; }
+    .button { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 700; transition: background .18s, transform .18s, border-color .18s; }
+    .button:active { transform: translateY(1px); }
+    .button:disabled { cursor: wait; opacity: .68; }
+    .button-secondary { border-color: var(--line); color: #536057; background: white; }
+    .button-secondary:hover { border-color: #cbd6cd; background: #fafbf9; }
+    .button-primary { color: white; background: var(--green); box-shadow: 0 4px 12px rgba(24, 126, 72, .16); }
+    .button-primary:hover { background: var(--green-dark); }
+    .button svg { width: 15px; height: 15px; }
+    .side { display: grid; gap: 15px; }
+    .result-card { min-height: 249px; padding: 21px; background: linear-gradient(150deg, #fff 40%, #f4faf5); }
+    .result-top { display: flex; justify-content: space-between; align-items: center; }
+    .result-status { display: inline-flex; align-items: center; gap: 7px; color: #8b968d; font-size: 10px; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #b6c0b8; }
+    .result-status.ready { color: var(--green); }
+    .result-status.ready .status-dot { background: #38a765; box-shadow: 0 0 0 3px rgba(56, 167, 101, .13); }
+    .result-status.error { color: var(--red); }
+    .result-status.error .status-dot { background: var(--red); }
+    .result-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid #e8f0e8; border-radius: 10px; color: var(--green); background: #f5faf5; }
+    .result-icon svg { width: 18px; height: 18px; }
+    .result-label { margin: 22px 0 0; color: var(--muted); font-size: 11px; font-weight: 600; }
+    .result-value-row { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; }
+    .result-value { color: var(--green-dark); font-size: clamp(46px, 6vw, 61px); font-weight: 760; letter-spacing: -.085em; line-height: 1.2; font-variant-numeric: tabular-nums; }
+    .result-unit { color: #79857c; font-size: 13px; font-weight: 560; }
+    .result-description { min-height: 32px; margin: 8px 0 0; color: #829087; font-size: 11px; line-height: 1.55; }
+    .result-divider { height: 1px; margin: 15px 0 12px; background: #e8eee8; }
+    .result-meta { display: flex; justify-content: space-between; color: #828d84; font-size: 10px; }
+    .result-meta strong { color: #47564b; font-weight: 650; }
+    .error-message { margin: 10px 0 0; color: var(--red); font-size: 11px; line-height: 1.5; }
+    [hidden] { display: none !important; }
+    .insight-card { padding: 19px; }
+    .insight-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
+    .insight-symbol { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 8px; color: #8f7119; background: #fbf5df; }
+    .insight-symbol svg { width: 15px; height: 15px; }
+    .insight-heading h2 { font-size: 13px; }
+    .insight { display: flex; align-items: baseline; gap: 7px; }
+    .insight strong { color: #8a6d11; font-size: 34px; font-weight: 740; letter-spacing: -.065em; }
+    .insight span { color: #81877d; font-size: 11px; }
+    .insight-copy { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+    .info-card { padding: 18px; }
+    .info-title { display: flex; align-items: center; gap: 8px; margin: 0; color: #455248; font-size: 11px; font-weight: 700; }
+    .info-title svg { width: 15px; height: 15px; color: var(--green); }
+    .info-text { margin: 9px 0 0; color: var(--muted); font-size: 10px; line-height: 1.65; }
+    .footer { margin-top: 22px; padding: 0 3px; color: #98a199; font-size: 10px; line-height: 1.6; }
+    .footer a { color: #718078; text-decoration: none; }
+    .footer a:hover { color: var(--green); }
+    @media (min-width: 1100px) { .page { padding-top: 61px; } }
+    @media (max-width: 760px) {
+      .topbar { height: 61px; padding: 0 19px; }
+      .topbar-note { display: none; }
+      .page { width: min(540px, calc(100% - 28px)); padding: 38px 0 40px; }
+      .layout { grid-template-columns: 1fr; gap: 14px; }
+      .side { grid-template-columns: 1fr 1fr; align-items: stretch; gap: 12px; }
+      .result-card { min-height: 225px; grid-row: span 2; }
+      .insight-card { padding: 17px; }
+      .info-card { padding: 15px; }
+      .form-card { padding: 20px; }
+    }
+    @media (max-width: 440px) {
+      .side { grid-template-columns: 1fr; }
+      .result-card { grid-row: auto; min-height: 220px; }
+      .fields { gap: 15px 11px; }
+      .form-card { padding: 17px; }
+      .form-footer { align-items: flex-end; }
+      .form-note { max-width: 145px; }
+      .button { padding: 0 11px; font-size: 10px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Blinkit delivery estimator home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3.5 8.8h10.7v8.5H3.5zM14.2 11h3.1l3.2 3.2v3.1h-6.3z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/><circle cx="7.5" cy="18" r="1.8" fill="currentColor"/><circle cx="17.5" cy="18" r="1.8" fill="currentColor"/><path d="M7.3 5.6v4.8m2.4-4.8v4.8m2.4-4.8v4.8" stroke="#ffd865" stroke-width="1.3" stroke-linecap="round"/></svg>
+      </span>
+      <span>Blinkit <span style="color:#8b988e;font-weight:540">ML Studio</span></span>
+    </a>
+    <div class="topbar-right">
+      <span class="topbar-note">Order intelligence · model-backed estimate</span>
+      <a class="api-link" href="/docs" target="_blank" rel="noopener noreferrer">API docs ↗</a>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="intro" aria-labelledby="page-title">
+      <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> Delivery prediction</div>
+      <h1 id="page-title">When will it arrive?</h1>
+      <p class="intro-copy">Add the order details to get an estimated delivery time. Our model learns from 44,402 completed Blinkit orders across eight cities.</p>
+    </section>
+
+    <div class="layout">
+      <section class="card form-card" aria-labelledby="form-title">
+        <div class="card-heading">
+          <div><h2 id="form-title">Order details</h2><p class="card-subtitle">Share what you know about this order.</p></div>
+          <span class="required-note"><span class="required">*</span> Required</span>
+        </div>
+
+        <form id="prediction-form">
+          <div class="fields">
+            <div class="field">
+              <label for="city">Delivery city <span class="required">*</span></label>
+              <div class="control-wrap">
+                <span class="control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M19 10.1c0 5-7 10.1-7 10.1S5 15.1 5 10.1a7 7 0 1 1 14 0Z" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="10" r="2.3" stroke="currentColor" stroke-width="1.6"/></svg></span>
+                <select class="with-icon" id="city" name="city" required>
+                  <option value="" disabled selected>Select a city</option>
+                  <option>Bangalore</option><option>Chennai</option><option>Delhi</option><option>Gurugram</option>
+                  <option>Hyderabad</option><option>Mumbai</option><option>Noida</option><option>Pune</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="dark_store_id">Dark store <span class="optional">Optional</span></label>
+              <div class="control-wrap">
+                <span class="control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 20V8l8-4 8 4v12H4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 20v-6h6v6M8 9h.01M12 9h.01M16 9h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+                <input class="with-icon" id="dark_store_id" name="dark_store_id" list="store-list" maxlength="80" placeholder="e.g. DS-DEL-03" autocomplete="off">
+                <datalist id="store-list"><option value="DS-DEL-03"><option value="DS-MUM-01"><option value="DS-BAN-01"><option value="DS-CHE-01"><option value="DS-HYD-01"><option value="DS-PUN-01"><option value="DS-NOI-01"><option value="DS-GUR-01"></datalist>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="order_date">Order date <span class="optional">Optional</span></label>
+              <div class="control-wrap">
+                <span class="control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="6" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 4v4m8-4v4M4 10h16m-11 4h2m3 0h1m-6 3h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+                <input class="with-icon" id="order_date" name="order_date" type="date">
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="order_hour">Order hour <span class="optional">Optional</span></label>
+              <div class="control-wrap">
+                <span class="control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5l3.2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                <select class="with-icon" id="order_hour" name="order_hour">
+                  <option value="">Select an hour</option>
+                  <option value="6">6:00</option><option value="7">7:00</option><option value="8">8:00</option><option value="9">9:00</option>
+                  <option value="10">10:00</option><option value="11">11:00</option><option value="12">12:00</option><option value="13">13:00</option>
+                  <option value="14">14:00</option><option value="15">15:00</option><option value="16">16:00</option><option value="17">17:00</option>
+                  <option value="18">18:00</option><option value="19">19:00</option><option value="20">20:00</option><option value="21">21:00</option>
+                  <option value="22">22:00</option><option value="23">23:00</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field full">
+              <label for="category">Product category <span class="required">*</span></label>
+              <div class="control-wrap">
+                <span class="control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 8h14l-1 12H6L5 8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9V7a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 13h.01m6-.01h.01" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg></span>
+                <select class="with-icon" id="category" name="category" required>
+                  <option value="" disabled selected>Choose a product category</option>
+                  <option>Bakery</option><option>Beverages</option><option>Dairy &amp; Breakfast</option>
+                  <option>Fruits &amp; Vegetables</option><option>Household</option><option>Instant Food</option>
+                  <option>Personal Care</option><option>Snacks</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="distance_km">Store-to-home distance <span class="optional">Optional</span></label>
+              <div class="control-wrap">
+                <span class="control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M6 18c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2Zm12-8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2ZM8 16c7 0 2-8 8-8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+                <input class="with-icon" id="distance_km" name="distance_km" type="number" min="0" max="500" step="0.01" placeholder="e.g. 2.4">
+              </div>
+              <p class="hint">Distance in kilometres</p>
+            </div>
+
+            <div class="field">
+              <label for="payment_mode">Payment method <span class="optional">Optional</span></label>
+              <div class="control-wrap">
+                <span class="control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M4 10h16m-12 4h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+                <select class="with-icon" id="payment_mode" name="payment_mode">
+                  <option value="">Select payment</option><option>UPI</option><option>Card</option>
+                  <option>Wallet</option><option>Cash on Delivery</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="quantity">Item quantity <span class="optional">Optional</span></label>
+              <div class="control-wrap">
+                <span class="control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="6" height="6" rx="1.3" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.3" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.3" stroke="currentColor" stroke-width="1.5"/><path d="M17 14v6m-3-3h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+                <input class="with-icon" id="quantity" name="quantity" type="number" min="0" max="10000" step="any" placeholder="e.g. 3">
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="unit_price">Item price <span class="optional">Optional</span></label>
+              <div class="control-wrap">
+                <span class="control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18m4-13a3 3 0 0 0-3-2h-2a3 3 0 0 0 0 6h2a3 3 0 0 1 0 6h-2a3 3 0 0 1-3-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+                <input class="with-icon" id="unit_price" name="unit_price" type="number" min="0" max="1000000" step="0.01" placeholder="e.g. 85">
+              </div>
+              <p class="hint">Price per item, in rupees</p>
+            </div>
+
+            <div class="field">
+              <label for="order_value">Total order value <span class="optional">Optional</span></label>
+              <div class="control-wrap">
+                <span class="control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 6.5h14l-.7 14H5.7L5 6.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 7V5a3 3 0 0 1 6 0v2m-4 5h2a1.5 1.5 0 0 1 0 3h-2m1 0v2m0-7v.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+                <input class="with-icon" id="order_value" name="order_value" type="number" min="0" max="10000000" step="0.01" placeholder="e.g. 255">
+              </div>
+              <p class="hint">Total basket value, in rupees</p>
+            </div>
+          </div>
+
+          <div class="form-footer">
+            <p class="form-note">Add any details you know; the trained model fills in optional information you leave blank.</p>
+            <div class="actions">
+              <button class="button button-secondary" type="reset">Clear</button>
+              <button class="button button-primary" id="submit-button" type="submit">
+                <svg class="button-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 3 5 14h6l-1 7 9-12h-6l1-6Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="button-label">Estimate time</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <aside class="side" aria-label="Prediction information">
+        <section class="card result-card" aria-live="polite" aria-atomic="true">
+          <div class="result-top">
+            <div id="model-status" class="result-status"><span class="status-dot" aria-hidden="true"></span><span>Checking model</span></div>
+            <span class="result-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 17a8 8 0 1 1 2.4 2.4L4 20l.6-3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="m9.5 12.5 1.7 1.7 3.5-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </div>
+          <p class="result-label">Predicted delivery time</p>
+          <div class="result-value-row"><span id="prediction-value" class="result-value">--</span><span class="result-unit">minutes</span></div>
+          <p id="result-description" class="result-description">Fill in the city and category, then request an estimate.</p>
+          <p id="error-message" class="error-message" role="alert" hidden></p>
+          <div class="result-divider"></div>
+          <div class="result-meta"><span>Prediction model</span><strong id="model-name">Checking…</strong></div>
+        </section>
+
+        <section class="card insight-card">
+          <div class="insight-heading">
+            <span class="insight-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v2m0 14v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M3 12h2m14 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4M8 15a5 5 0 1 1 8 0c-.8.6-1 1.1-1 2h-6c0-.9-.2-1.4-1-2Zm2 5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <h2>A quick reality check</h2>
+          </div>
+          <div class="insight"><strong>95%</strong><span>delivered over 10 min</span></div>
+          <p class="insight-copy">In the historical training data, nearly 95% of completed orders arrived after the 10-minute promise.</p>
+        </section>
+
+        <section class="card info-card">
+          <h2 class="info-title"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 11v5m0-8h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>About this estimate</h2>
+          <p class="info-text">This prediction comes from a Linear Regression model trained on 44,402 historical delivered orders. It is an estimate, not a live traffic forecast or guaranteed arrival time.</p>
+        </section>
+      </aside>
+    </div>
+
+    <footer class="footer">Delivery estimates are based on historical order patterns. This tool is an educational machine-learning project. <a href="/docs" target="_blank" rel="noopener noreferrer">View the API documentation</a>.</footer>
+  </main>
+
+  <script>
+    (() => {
+      const form = document.getElementById("prediction-form");
+      const button = document.getElementById("submit-button");
+      const buttonLabel = button.querySelector(".button-label");
+      const buttonIcon = button.querySelector(".button-icon");
+      const resultValue = document.getElementById("prediction-value");
+      const resultDescription = document.getElementById("result-description");
+      const errorMessage = document.getElementById("error-message");
+      const modelName = document.getElementById("model-name");
+      const modelStatus = document.getElementById("model-status");
+
+      function setStatus(message, state) {
+        modelStatus.className = `result-status${state ? ` ${state}` : ""}`;
+        modelStatus.lastElementChild.textContent = message;
+      }
+
+      function optionalNumber(formData, name, integer = false) {
+        const raw = formData.get(name);
+        if (raw === "") return null;
+        const parsed = integer ? Number.parseInt(raw, 10) : Number(raw);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+
+      async function readError(response) {
+        try {
+          const data = await response.json();
+          if (typeof data.detail === "string") return data.detail;
+          if (Array.isArray(data.detail)) {
+            return data.detail.map((item) => item.msg).filter(Boolean).join("; ");
+          }
+        } catch (error) {
+          console.error("Could not read the API error response:", error);
+        }
+        return `The server returned an error (${response.status}). Please try again.`;
+      }
+
+      fetch("/health")
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`Health check returned ${response.status}.`);
+          return response.json();
+        })
+        .then((health) => {
+          if (health.model_loaded) {
+            setStatus("Model ready", "ready");
+            modelName.textContent = health.model.replaceAll("_", " ");
+          } else {
+            setStatus("Model unavailable", "error");
+            modelName.textContent = "Not trained";
+          }
+        })
+        .catch((error) => {
+          console.error("Could not check model health:", error);
+          setStatus("Connection issue", "error");
+          modelName.textContent = "Unavailable";
+        });
+
+      form.addEventListener("reset", () => {
+        errorMessage.hidden = true;
+        errorMessage.textContent = "";
+        resultValue.textContent = "--";
+        resultDescription.textContent = "Fill in the city and category, then request an estimate.";
+        setStatus("Model ready", "ready");
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!form.reportValidity()) return;
+
+        const data = new FormData(form);
+        const payload = {
+          city: data.get("city"),
+          category: data.get("category"),
+          order_date: data.get("order_date") || null,
+          order_hour: optionalNumber(data, "order_hour", true),
+          dark_store_id: data.get("dark_store_id") || null,
+          quantity: optionalNumber(data, "quantity"),
+          unit_price: optionalNumber(data, "unit_price"),
+          order_value: optionalNumber(data, "order_value"),
+          distance_km: optionalNumber(data, "distance_km"),
+          payment_mode: data.get("payment_mode") || null,
+        };
+
+        button.disabled = true;
+        buttonLabel.textContent = "Calculating…";
+        buttonIcon.innerHTML = '<circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2" stroke-dasharray="28 18"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur=".8s" repeatCount="indefinite"/></circle>';
+        resultValue.textContent = "--";
+        resultDescription.textContent = "Running the delivery-time model…";
+        errorMessage.hidden = true;
+        errorMessage.textContent = "";
+        setStatus("Calculating", "");
+
+        try {
+          const response = await fetch("/predict", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!response.ok) throw new Error(await readError(response));
+          const result = await response.json();
+          if (!Number.isFinite(result.predicted_delivery_mins)) {
+            throw new Error("The model returned an invalid delivery-time estimate.");
+          }
+          resultValue.textContent = result.predicted_delivery_mins.toFixed(1);
+          resultDescription.textContent = "Estimated from the order details and historical delivery patterns.";
+          modelName.textContent = String(result.model).replaceAll("_", " ");
+          setStatus("Estimate ready", "ready");
+        } catch (error) {
+          console.error("Delivery prediction failed:", error);
+          resultValue.textContent = "--";
+          resultDescription.textContent = "We couldn't calculate an estimate for this order.";
+          errorMessage.textContent = error.message || "Could not reach the prediction service. Please try again.";
+          errorMessage.hidden = false;
+          setStatus("Prediction failed", "error");
+        } finally {
+          button.disabled = false;
+          buttonLabel.textContent = "Estimate time";
+          buttonIcon.innerHTML = '<path d="M13 3 5 14h6l-1 7 9-12h-6l1-6Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
