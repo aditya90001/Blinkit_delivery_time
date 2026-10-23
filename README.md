@@ -1,13 +1,35 @@
 # Blinkit Delivery Time Prediction
 
-An end-to-end machine-learning project that estimates grocery delivery time
-from checkout-time order details. It includes exploratory data analysis,
-feature engineering, regression model comparison, a FastAPI service, and an
-HTML prediction form.
+<p align="center">
+  <strong>Predict an estimated grocery delivery time from order details.</strong>
+  <br />
+  Explore the data, compare regression models, and try the FastAPI-powered web app.
+</p>
 
-> **Model status:** The saved evaluation scores below are from the earlier
-> model comparison. The later hyperparameter-tuning run was stopped before it
-> produced new verified metrics. Do not treat the old scores as tuned results.
+<p align="center">
+  <a href="https://blinkit-delivery-time.onrender.com/">
+    <img src="https://img.shields.io/badge/Live%20Demo-Open%20App-168A50?style=for-the-badge" alt="Open the live app" />
+  </a>
+  <a href="https://blinkit-delivery-time.onrender.com/docs">
+    <img src="https://img.shields.io/badge/API-Swagger%20Docs-168A50?style=for-the-badge" alt="Open API documentation" />
+  </a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11+" />
+  <img src="https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/ML-scikit--learn-F7931E?logo=scikitlearn&logoColor=white" alt="scikit-learn" />
+  <img src="https://img.shields.io/badge/Container-Docker-2496ED?logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/Deployed-Render-46E3B7?logo=render&logoColor=black" alt="Deployed on Render" />
+</p>
+
+> **Live app:** [blinkit-delivery-time.onrender.com](https://blinkit-delivery-time.onrender.com/) ·
+> [API health](https://blinkit-delivery-time.onrender.com/health) ·
+> [Interactive API docs](https://blinkit-delivery-time.onrender.com/docs)
+
+The app provides a browser form for order details and returns an estimated
+delivery duration in minutes. It is a portfolio and learning project; the
+estimate is not a guaranteed delivery time.
 
 ## Contents
 
@@ -61,24 +83,29 @@ non-informative for delivered orders.
 
 ## Model evaluation
 
-The previous saved report evaluates a chronological holdout beginning
-2025-05-24. It contains 9,081 holdout orders.
+The latest local tuning run evaluates a chronological holdout beginning
+2025-05-24, containing 9,081 orders. Tuning used an earlier chronological
+validation period; the holdout was reserved for final model comparison.
 
-| Model | MAE (minutes) | RMSE (minutes) | R² |
+| Model | Holdout MAE (min) ↓ | Holdout RMSE (min) ↓ | R² ↑ |
 |---|---:|---:|---:|
-| Linear regression | 1.876 | 3.329 | 0.212 |
-| Random forest | 2.260 | 3.552 | 0.103 |
-| Decision tree | 2.348 | 3.901 | -0.082 |
-| XGBoost | 2.350 | 3.958 | -0.114 |
+| **Linear regression (selected)** | **1.859** | 3.326 | 0.213 |
+| XGBoost | 1.881 | **3.292** | **0.229** |
+| Random forest | 2.106 | 3.401 | 0.177 |
+| Decision tree | 2.154 | 3.594 | 0.081 |
 
-**Interpretation:** Linear regression had the lowest MAE in this saved run.
-The R² of 0.212 means it explains about 21.2% of the target variance on this
-holdout; it is not “21.2% prediction accuracy.” The errors are in minutes,
-and predictions are estimates—not guaranteed ETAs.
+The selected model is chosen by lowest holdout MAE. In the latest run, linear
+regression achieved an MAE of **1.859 minutes**; XGBoost had a slightly lower
+RMSE and higher R². R² is not “prediction accuracy.” All metrics are for the
+specified historical holdout and do not guarantee future performance.
 
-Metrics are also saved in `reports/model_comparison.csv` and
-`reports/model_metadata.json`. Reports and the raw dataset are excluded from
-Git by default.
+**Deployment note:** The latest model artifact and these metrics are local
+project files. The Render site will use the updated model only after the
+artifact is committed and pushed to GitHub and Render completes a new deploy.
+
+Training also records tuned parameters and validation metrics in
+`reports/model_comparison.csv` and `reports/model_metadata.json`. Those
+generated reports and the raw dataset are excluded from Git by default.
 
 ## Quick start
 
@@ -116,14 +143,16 @@ To train from another CSV:
 
 Training compares Linear/Ridge Regression, Decision Tree, Random Forest,
 and XGBoost using time-ordered data. The tuning configuration can be adjusted
-with `--tuning-trials`. A run writes:
+with `--tuning-trials` (the default search evaluates two sampled settings per
+model, as well as its starting configuration). A run writes:
 
 - `models/delivery_time_model.joblib`
 - `reports/model_comparison.csv`
 - `reports/model_metadata.json`
 
-The current saved metrics above are from the previous run; rerun training to
-produce fresh metrics after any model or tuning changes.
+Run training to produce fresh metrics after changing model code, the dataset,
+or tuning settings. Review the holdout results before replacing the deployed
+model.
 
 ### Start the web app
 
@@ -131,7 +160,7 @@ produce fresh metrics after any model or tuning changes.
 .\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
-Open:
+Open the locally running app:
 
 - Frontend: <http://127.0.0.1:8001/>
 - API health: <http://127.0.0.1:8001/health>
@@ -188,6 +217,7 @@ node --test tests/test_frontend_script.js
 
 ## Deploy to Render
 
+The app is deployed at **[blinkit-delivery-time.onrender.com](https://blinkit-delivery-time.onrender.com/)**.
 The project includes a Dockerfile and `render.yaml`. The image contains the
 API, HTML template, runtime dependencies, and trained model artifact; it does
 not need the raw CSV or run model training during deployment.
@@ -198,8 +228,10 @@ not need the raw CSV or run model training during deployment.
    out of Git; these are covered by `.gitignore`.
 3. In Render, create a Blueprint or Docker Web Service connected to the repo.
 4. Confirm `/health` is the health-check path and deploy.
-5. Open the Render service URL; the frontend is at `/`, and the API docs are
-   at `/docs`.
+5. Open the [live app](https://blinkit-delivery-time.onrender.com/); the API
+   health check is at [`/health`](https://blinkit-delivery-time.onrender.com/health),
+   and the interactive docs are at
+   [`/docs`](https://blinkit-delivery-time.onrender.com/docs).
 
 See the [Render deployment guide](./project_guide/RENDER_DEPLOYMENT.md) for
 detailed steps and troubleshooting.

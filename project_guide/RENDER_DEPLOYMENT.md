@@ -12,13 +12,14 @@
 
 ## Before deploying
 
-1. Ensure the project is in a GitHub repository connected to your Render
-   account. Render deploys from a Git repository; the current local workspace
-   has no Git repository initialized.
-2. Include `Dockerfile`, `render.yaml`, `requirements-api.txt`, `app/`,
-   `templates/`, and `models/delivery_time_model.joblib` in the pushed branch.
+1. The project is already connected to the `main` branch of the GitHub
+   repository `aditya90001/Blinkit_delivery_time`. Confirm the latest commit
+   is pushed before creating the Render service.
+2. Confirm `Dockerfile`, `render.yaml`, `requirements-api.txt`, `app/`,
+   `templates/`, and `models/delivery_time_model.joblib` are tracked in that
+   branch.
 3. Do not commit `.env`, credentials, or private data. The dataset is excluded
-   from the Docker context; do not publish it just to deploy the API.
+   from the Docker context and Git; do not publish it to deploy the API.
 
 ## Render dashboard steps
 
@@ -54,6 +55,8 @@ tuning attempt did not produce verified new metrics.
 
 ## Current deployment blocker
 
-This workspace is not a Git repository, so it cannot be connected directly to
-Render yet. Push the project to GitHub first, then connect that repository in
-Render. Keep the dataset private and outside the image.
+The local Docker client could not connect to the Docker Desktop Linux engine
+during the last check. Render can build the Dockerfile remotely from GitHub, so
+local Docker is not required for dashboard deployment. To test the image
+locally first, start Docker Desktop and wait for its engine to be ready, then
+run `docker build -t blinkit-delivery-time-api .` from the project root.
